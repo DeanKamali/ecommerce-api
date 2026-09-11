@@ -1,0 +1,2008 @@
+openapi: 3.0.3
+info:
+  title: E-commerce API
+  version: "1.0.0"
+  description: |
+    REST API for a small e-commerce catalog: products (with variants) and
+    services (with reviews), categories, carts with checkout, and orders
+    with a status lifecycle. All responses are JSON.
+
+    Monetary values are integers in minor units (cents) alongside an
+    ISO-4217 currency code.
+
+    Authentication: most write operations and cart, order, and review
+    mutations require a bearer token from /auth/register or /auth/login.
+    Catalog reads are public.
+servers:
+  - url: /
+    description: Same origin as this document
+security:
+  - bearerAuth: []
+
+tags:
+  - name: meta
+    description: API metadata and health
+  - name: products
+  - name: variants
+    description: Product variants (skus)
+  - name: services
+  - name: reviews
+  - name: categories
+  - name: carts
+  - name: cart items
+  - name: orders
+  - name: auth
+    description: Registration, login, and account management
+
+paths:
+  /:
+    get:
+      security: []
+      tags: [meta]
+      summary: API root
+      description: Returns the API name and its top-level endpoints.
+      operationId: getRoot
+      responses:
+        "200":
+          description: API metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootInfo"
+  /up:
+    get:
+      security: []
+      tags: [meta]
+      summary: Health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+  /categories:
+    get:
+      security: []
+      tags: [categories]
+      summary: List categories
+      operationId: listCategories
+      parameters:
+        - name: parent_id
+          in: query
+          description: Only return direct children of this category
+          schema:
+            type: integer
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Per"
+      responses:
+        "200":
+          description: Paginated list of categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CategoryWithCount"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+    post:
+      tags: [categories]
+      summary: Create a category
+      operationId: createCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryBody"
+      responses:
+        "201":
+          description: Created category
+          headers:
+            Location:
+              description: URL of the new category
+              schema:
+                type: string
+                example: /categories/7
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /categories/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      security: []
+      tags: [categories]
+      summary: Get a category
+      operationId: getCategory
+      responses:
+        "200":
+          description: Category with its catalog items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [categories]
+      summary: Update a category
+      operationId: updateCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryBody"
+      responses:
+        "200":
+          description: Updated category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [categories]
+      summary: Delete a category
+      operationId: deleteCategory
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /products:
+    get:
+      security: []
+      tags: [products]
+      summary: List products
+      description: Supports filtering, sorting and pagination.
+      operationId: listProducts
+      parameters:
+        - name: category
+          in: query
+          description: Category slug to filter by
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: Search in name and description
+          schema:
+            type: string
+        - name: min_price
+          in: query
+          description: Minimum price in cents
+          schema:
+            type: integer
+            minimum: 0
+        - name: max_price
+          in: query
+          description: Maximum price in cents
+          schema:
+            type: integer
+            minimum: 0
+        - name: featured
+          in: query
+          description: Only featured products
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          description: Sort order (default is newest first)
+          schema:
+            type: string
+            enum: [price_asc, price_desc, name, rating]
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Per"
+      responses:
+        "200":
+          description: Paginated list of products
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+    post:
+      tags: [products]
+      summary: Create a product
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductBody"
+      responses:
+        "201":
+          description: Created product
+          headers:
+            Location:
+              description: URL of the new product
+              schema:
+                type: string
+                example: /products/8
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /products/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      security: []
+      tags: [products]
+      summary: Get a product
+      description: Includes variants and reviews.
+      operationId: getProduct
+      responses:
+        "200":
+          description: Product detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [products]
+      summary: Update a product
+      operationId: updateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductBody"
+      responses:
+        "200":
+          description: Updated product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [products]
+      summary: Delete a product
+      operationId: deleteProduct
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /products/{product_id}/variants:
+    parameters:
+      - name: product_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      security: []
+      tags: [variants]
+      summary: List product variants
+      operationId: listVariants
+      responses:
+        "200":
+          description: Variants of the product
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Variant"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [variants]
+      summary: Create a product variant
+      operationId: createVariant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantBody"
+      responses:
+        "201":
+          description: Created variant
+          headers:
+            Location:
+              description: URL of the new variant
+              schema:
+                type: string
+                example: /products/8/variants/1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variant"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /products/{product_id}/variants/{id}:
+    parameters:
+      - name: product_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [variants]
+      summary: Get a variant
+      operationId: getVariant
+      responses:
+        "200":
+          description: Variant detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variant"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [variants]
+      summary: Update a variant
+      operationId: updateVariant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantBody"
+      responses:
+        "200":
+          description: Updated variant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variant"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [variants]
+      summary: Delete a variant
+      operationId: deleteVariant
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /products/{product_id}/reviews:
+    parameters:
+      - name: product_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      security: []
+      tags: [reviews]
+      summary: List product reviews
+      operationId: listProductReviews
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Per"
+      responses:
+        "200":
+          description: Paginated reviews with the average rating
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Review"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+                  average_rating:
+                    type: number
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [reviews]
+      summary: Create a product review
+      operationId: createProductReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewBody"
+      responses:
+        "201":
+          description: Created review
+          headers:
+            Location:
+              description: URL of the new review
+              schema:
+                type: string
+                example: /products/8/reviews/1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /products/{product_id}/reviews/{id}:
+    parameters:
+      - name: product_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [reviews]
+      summary: Delete a product review
+      operationId: deleteProductReview
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /services:
+    get:
+      security: []
+      tags: [services]
+      summary: List services
+      description: Supports filtering, sorting and pagination.
+      operationId: listServices
+      parameters:
+        - name: category
+          in: query
+          description: Category slug to filter by
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: Search in name and description
+          schema:
+            type: string
+        - name: min_price
+          in: query
+          description: Minimum price in cents
+          schema:
+            type: integer
+            minimum: 0
+        - name: max_price
+          in: query
+          description: Maximum price in cents
+          schema:
+            type: integer
+            minimum: 0
+        - name: featured
+          in: query
+          description: Only featured services
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          description: Sort order (default is newest first)
+          schema:
+            type: string
+            enum: [price_asc, price_desc, name, rating]
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Per"
+      responses:
+        "200":
+          description: Paginated list of services
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Service"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+    post:
+      tags: [services]
+      summary: Create a service
+      operationId: createService
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceBody"
+      responses:
+        "201":
+          description: Created service
+          headers:
+            Location:
+              description: URL of the new service
+              schema:
+                type: string
+                example: /services/9
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /services/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      security: []
+      tags: [services]
+      summary: Get a service
+      description: Includes reviews.
+      operationId: getService
+      responses:
+        "200":
+          description: Service detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [services]
+      summary: Update a service
+      operationId: updateService
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceBody"
+      responses:
+        "200":
+          description: Updated service
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [services]
+      summary: Delete a service
+      operationId: deleteService
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /services/{service_id}/reviews:
+    parameters:
+      - name: service_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      security: []
+      tags: [reviews]
+      summary: List service reviews
+      operationId: listServiceReviews
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Per"
+      responses:
+        "200":
+          description: Paginated reviews with the average rating
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Review"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+                  average_rating:
+                    type: number
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [reviews]
+      summary: Create a service review
+      operationId: createServiceReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewBody"
+      responses:
+        "201":
+          description: Created review
+          headers:
+            Location:
+              description: URL of the new review
+              schema:
+                type: string
+                example: /services/9/reviews/1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /services/{service_id}/reviews/{id}:
+    parameters:
+      - name: service_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [reviews]
+      summary: Delete a service review
+      operationId: deleteServiceReview
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /carts:
+    get:
+      tags: [carts]
+      summary: List recent carts
+      description: Returns the 50 most recently updated carts.
+      operationId: listCarts
+      responses:
+        "200":
+          description: Cart summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CartSummary"
+    post:
+      tags: [carts]
+      summary: Create a cart
+      operationId: createCart
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CartBody"
+      responses:
+        "201":
+          description: Created cart
+          headers:
+            Location:
+              description: URL of the new cart
+              schema:
+                type: string
+                example: /carts/12
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /carts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [carts]
+      summary: Get a cart
+      operationId: getCart
+      responses:
+        "200":
+          description: Cart with items and totals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [carts]
+      summary: Delete a cart
+      operationId: deleteCart
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /carts/{id}/checkout:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [carts]
+      summary: Checkout a cart
+      description: |
+        Creates an order from the cart's items. Items are validated for
+        stock (variants) and removed from the cart on success.
+      operationId: checkoutCart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutBody"
+      responses:
+        "201":
+          description: Created order
+          headers:
+            Location:
+              description: URL of the new order
+              schema:
+                type: string
+                example: /orders/4
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /carts/{cart_id}/cart_items:
+    parameters:
+      - name: cart_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [cart items]
+      summary: List cart items
+      operationId: listCartItems
+      responses:
+        "200":
+          description: Items in the cart
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CartItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [cart items]
+      summary: Add an item to a cart
+      description: |
+        Provide either `variant_id` (the catalog item and unit price are
+        derived from the variant) or `catalog_item_id`.
+      operationId: addCartItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CartItemBody"
+      responses:
+        "201":
+          description: Added cart item
+          headers:
+            Location:
+              description: URL of the new cart item
+              schema:
+                type: string
+                example: /carts/12/cart_items/3
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CartItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /carts/{cart_id}/cart_items/{id}:
+    parameters:
+      - name: cart_id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [cart items]
+      summary: Get a cart item
+      operationId: getCartItem
+      responses:
+        "200":
+          description: Cart item detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CartItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [cart items]
+      summary: Update a cart item
+      operationId: updateCartItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CartItemUpdateBody"
+      responses:
+        "200":
+          description: Updated cart item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CartItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [cart items]
+      summary: Remove a cart item
+      operationId: deleteCartItem
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /orders:
+    get:
+      tags: [orders]
+      summary: List orders
+      operationId: listOrders
+      parameters:
+        - name: status
+          in: query
+          description: Filter by order status
+          schema:
+            $ref: "#/components/schemas/OrderStatus"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Per"
+      responses:
+        "200":
+          description: Paginated list of orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrderSummary"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+    post:
+      tags: [orders]
+      summary: Create an order
+      description: |
+        Creates an order from an explicit list of items. Each item is
+        validated for stock (variants) and stock is decremented on success.
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderBody"
+      responses:
+        "201":
+          description: Created order
+          headers:
+            Location:
+              description: URL of the new order
+              schema:
+                type: string
+                example: /orders/4
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          description: One of the referenced catalog items or variants does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorNotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /orders/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [orders]
+      summary: Get an order
+      operationId: getOrder
+      responses:
+        "200":
+          description: Order with items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [orders]
+      summary: Transition an order
+      description: |
+        Moves the order to a new status. Allowed transitions:
+        pending -> confirmed | cancelled; confirmed -> shipped | cancelled;
+        shipped -> delivered. Delivered and cancelled are terminal.
+      operationId: updateOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderStatusBody"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [orders]
+      summary: Delete an order
+      operationId: deleteOrder
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /orders/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [orders]
+      summary: Cancel an order
+      description: Cancels the order if it is in a cancellable state.
+      operationId: cancelOrder
+      responses:
+        "200":
+          description: Cancelled order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /orders/{order_id}/order_items:
+    parameters:
+      - name: order_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [orders]
+      summary: List order items
+      operationId: listOrderItems
+      responses:
+        "200":
+          description: Items on the order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrderItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new account
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResult"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Log in and receive an API token
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Authenticated user and API token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/logout:
+    delete:
+      tags: [auth]
+      summary: Rotate the token so the current one stops working
+      operationId: logout
+      responses:
+        "204":
+          description: Logged out
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Get the current user
+      operationId: getMe
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [auth]
+      summary: Update the current user
+      operationId: updateMe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserInput"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [auth]
+      summary: Delete the current account
+      operationId: deleteMe
+      responses:
+        "204":
+          description: Account deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API token returned by /auth/register or /auth/login
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Page number (1-based)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Per:
+      name: per
+      in: query
+      description: Results per page (max 100)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Id:
+      name: id
+      in: path
+      required: true
+      description: Resource id
+      schema:
+        type: integer
+  responses:
+    NotFound:
+      description: The requested resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorNotFound"
+    BadRequest:
+      description: A required parameter is missing or malformed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBadRequest"
+    Unprocessable:
+      description: The request was well-formed but failed validation or a domain rule
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/ErrorValidation"
+              - $ref: "#/components/schemas/ErrorInvalidTransition"
+              - $ref: "#/components/schemas/ErrorInsufficientStock"
+    Unauthorized:
+      description: The request is missing or has an invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorUnauthorized"
+  schemas:
+    User:
+      type: object
+      required: [id, email, name, admin, created_at]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        admin:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    AuthResult:
+      type: object
+      required: [user, api_token]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        api_token:
+          type: string
+          description: Bearer token for subsequent requests
+    CurrentUser:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+    RegisterInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        password:
+          type: string
+          format: password
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    UpdateUserInput:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    ErrorUnauthorized:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: invalid_credentials
+    RootInfo:
+      type: object
+      required: [name, endpoints]
+      properties:
+        name:
+          type: string
+          example: E-commerce API
+        endpoints:
+          type: array
+          items:
+            type: string
+          example: ["/products", "/services", "/categories", "/carts", "/orders"]
+    ErrorNotFound:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: not_found
+        message:
+          type: string
+    ErrorBadRequest:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: bad_request
+        message:
+          type: string
+          example: "missing parameter: product"
+    ErrorValidation:
+      type: object
+      required: [error, record, errors]
+      properties:
+        error:
+          type: string
+          example: validation_failed
+        record:
+          type: string
+          example: product
+        errors:
+          type: array
+          items:
+            type: string
+          example: ["Name can't be blank", "Slug can't be blank"]
+    ErrorInvalidTransition:
+      type: object
+      required: [error, errors]
+      properties:
+        error:
+          type: string
+          example: invalid_transition
+        errors:
+          type: array
+          items:
+            type: string
+          example: ["cannot transition from delivered to cancelled"]
+    ErrorInsufficientStock:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: insufficient_stock
+        message:
+          type: string
+    PaginationMeta:
+      type: object
+      required: [page, per, total, total_pages]
+      properties:
+        page:
+          type: integer
+          example: 1
+        per:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 5
+        total_pages:
+          type: integer
+          example: 1
+    Price:
+      type: object
+      required: [cents, currency]
+      properties:
+        cents:
+          type: integer
+          example: 1234
+        currency:
+          type: string
+          example: USD
+    Rating:
+      type: object
+      required: [average, count]
+      properties:
+        average:
+          type: number
+          example: 4.5
+        count:
+          type: integer
+          example: 2
+    Review:
+      type: object
+      required: [id, author, rating, created_at]
+      properties:
+        id:
+          type: integer
+        author:
+          type: string
+          example: Ada Lovelace
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        body:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    Category:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          example: Hardware
+        slug:
+          type: string
+          example: hardware
+        description:
+          type: string
+          nullable: true
+        parent_id:
+          type: integer
+          nullable: true
+    CategoryWithCount:
+      allOf:
+        - $ref: "#/components/schemas/Category"
+        - type: object
+          required: [items_count]
+          properties:
+            items_count:
+              type: integer
+              example: 3
+    CategoryDetail:
+      allOf:
+        - $ref: "#/components/schemas/Category"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/CatalogItem"
+    CatalogItemBase:
+      type: object
+      required: [id, type, name, slug, price, active, featured, in_stock, rating, created_at]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          example: product
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+          nullable: true
+        category:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/Category"
+        price:
+          $ref: "#/components/schemas/Price"
+        active:
+          type: boolean
+        featured:
+          type: boolean
+        in_stock:
+          type: boolean
+          description: "true when the item has stock available (variants considered)"
+        rating:
+          $ref: "#/components/schemas/Rating"
+        created_at:
+          type: string
+          format: date-time
+        reviews:
+          type: array
+          description: Present only on item detail responses
+          items:
+            $ref: "#/components/schemas/Review"
+    Product:
+      allOf:
+        - $ref: "#/components/schemas/CatalogItemBase"
+        - type: object
+          required: [sku, stock_quantity, track_inventory, variants]
+          properties:
+            sku:
+              type: string
+              nullable: true
+              example: SW-1
+            stock_quantity:
+              type: integer
+              nullable: true
+              example: 5
+            track_inventory:
+              type: boolean
+              example: true
+            variants:
+              type: array
+              items:
+                $ref: "#/components/schemas/Variant"
+    Service:
+      allOf:
+        - $ref: "#/components/schemas/CatalogItemBase"
+        - type: object
+          required: [duration_minutes, bookable, max_capacity]
+          properties:
+            duration_minutes:
+              type: integer
+              nullable: true
+              example: 60
+            bookable:
+              type: boolean
+              example: true
+            max_capacity:
+              type: integer
+              nullable: true
+              example: 4
+    CatalogItem:
+      description: A catalog item is either a product or a service, distinguished by `type`.
+      oneOf:
+        - $ref: "#/components/schemas/Product"
+        - $ref: "#/components/schemas/Service"
+    Variant:
+      type: object
+      required: [id, name, sku, price, stock_quantity]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          example: 16GB kit
+        sku:
+          type: string
+          example: SW-16G
+        price:
+          $ref: "#/components/schemas/Price"
+        stock_quantity:
+          type: integer
+          example: 10
+        options:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            size: 16GB
+    CartItem:
+      type: object
+      required: [id, catalog_item, quantity, unit_price_cents, line_total_cents]
+      properties:
+        id:
+          type: integer
+        catalog_item:
+          type: object
+          required: [id, type, name]
+          properties:
+            id:
+              type: integer
+            type:
+              type: string
+              example: product
+            name:
+              type: string
+        variant:
+          nullable: true
+          type: object
+          required: [id, name]
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            sku:
+              type: string
+        quantity:
+          type: integer
+          example: 2
+        unit_price_cents:
+          type: integer
+          example: 1234
+        line_total_cents:
+          type: integer
+          example: 2468
+    Cart:
+      type: object
+      required: [id, token, currency, items, subtotal_cents, total_cents, updated_at]
+      properties:
+        id:
+          type: integer
+        token:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        currency:
+          type: string
+          example: USD
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CartItem"
+        subtotal_cents:
+          type: integer
+        total_cents:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+    CartSummary:
+      type: object
+      required: [id, token, currency, items_count, subtotal_cents, updated_at]
+      properties:
+        id:
+          type: integer
+        token:
+          type: string
+        currency:
+          type: string
+          example: USD
+        items_count:
+          type: integer
+          example: 3
+        subtotal_cents:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+    OrderStatus:
+      type: string
+      enum: [pending, confirmed, shipped, delivered, cancelled]
+    OrderItem:
+      type: object
+      required: [id, catalog_item_id, name, quantity, unit_price_cents, line_total_cents]
+      properties:
+        id:
+          type: integer
+        catalog_item_id:
+          type: integer
+        name:
+          type: string
+        variant:
+          nullable: true
+          type: object
+          required: [id, name]
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+        quantity:
+          type: integer
+        unit_price_cents:
+          type: integer
+        line_total_cents:
+          type: integer
+    Order:
+      type: object
+      required: [id, number, status, currency, subtotal_cents, total_cents, items, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        number:
+          type: string
+          example: "2026-000001"
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        currency:
+          type: string
+          example: USD
+        subtotal_cents:
+          type: integer
+        total_cents:
+          type: integer
+        customer:
+          type: object
+          required: [name, email]
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+              format: email
+        shipping:
+          type: object
+          nullable: true
+          properties:
+            line1:
+              type: string
+              nullable: true
+            city:
+              type: string
+              nullable: true
+            country:
+              type: string
+              nullable: true
+        notes:
+          type: string
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OrderSummary:
+      type: object
+      required: [id, number, status, currency, total_cents, created_at]
+      properties:
+        id:
+          type: integer
+        number:
+          type: string
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        currency:
+          type: string
+          example: USD
+        total_cents:
+          type: integer
+        customer_name:
+          type: string
+          example: Ada Lovelace
+        items_count:
+          type: integer
+          example: 2
+        created_at:
+          type: string
+          format: date-time
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: Hardware
+        slug:
+          type: string
+          nullable: true
+          description: Generated from the name if omitted
+        description:
+          type: string
+          nullable: true
+        parent_id:
+          type: integer
+          nullable: true
+    ProductInput:
+      type: object
+      required: [name, price_cents]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+          nullable: true
+          description: Generated from the name if omitted
+        description:
+          type: string
+          nullable: true
+        category_id:
+          type: integer
+          nullable: true
+        price_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          example: USD
+          description: Defaults to USD
+        active:
+          type: boolean
+        featured:
+          type: boolean
+        sku:
+          type: string
+          nullable: true
+        stock_quantity:
+          type: integer
+          minimum: 0
+          nullable: true
+        track_inventory:
+          type: boolean
+    ServiceInput:
+      type: object
+      required: [name, price_cents]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+          nullable: true
+          description: Generated from the name if omitted
+        description:
+          type: string
+          nullable: true
+        category_id:
+          type: integer
+          nullable: true
+        price_cents:
+          type: integer
+          minimum: 0
+        currency:
+          type: string
+          example: USD
+          description: Defaults to USD
+        active:
+          type: boolean
+        featured:
+          type: boolean
+        duration_minutes:
+          type: integer
+          nullable: true
+        bookable:
+          type: boolean
+        max_capacity:
+          type: integer
+          nullable: true
+    VariantInput:
+      type: object
+      required: [name, sku, price_cents]
+      properties:
+        name:
+          type: string
+        sku:
+          type: string
+          example: SW-16G
+          description: Must match [A-Za-z0-9_-]+ and be unique
+        price_cents:
+          type: integer
+          minimum: 0
+        stock_quantity:
+          type: integer
+          minimum: 0
+          default: 0
+        options:
+          type: object
+          additionalProperties:
+            type: string
+    ReviewInput:
+      type: object
+      required: [author, rating]
+      properties:
+        author:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        body:
+          type: string
+          maxLength: 2000
+    CartInput:
+      type: object
+      properties:
+        currency:
+          type: string
+          example: USD
+          description: ISO-4217 code; defaults to USD
+    CartItemInput:
+      type: object
+      description: Provide either `variant_id` or `catalog_item_id`.
+      properties:
+        catalog_item_id:
+          type: integer
+          description: Required when `variant_id` is not given
+        variant_id:
+          type: integer
+          description: The catalog item and unit price are derived from the variant
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+    CartItemUpdateInput:
+      type: object
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+        variant_id:
+          type: integer
+    OrderItemInput:
+      type: object
+      required: [catalog_item_id]
+      properties:
+        catalog_item_id:
+          type: integer
+        variant_id:
+          type: integer
+          description: Must belong to the catalog item
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+    OrderInput:
+      type: object
+      required: [customer_name, email, items]
+      properties:
+        customer_name:
+          type: string
+        email:
+          type: string
+          format: email
+        currency:
+          type: string
+          example: USD
+          description: Defaults to USD
+        shipping_line1:
+          type: string
+        shipping_city:
+          type: string
+        shipping_country:
+          type: string
+        notes:
+          type: string
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/OrderItemInput"
+    CheckoutInput:
+      type: object
+      required: [customer_name, email]
+      properties:
+        customer_name:
+          type: string
+        email:
+          type: string
+          format: email
+        shipping_line1:
+          type: string
+        shipping_city:
+          type: string
+        shipping_country:
+          type: string
+        notes:
+          type: string
+    OrderStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+    CategoryBody:
+      type: object
+      required: [category]
+      properties:
+        category:
+          $ref: "#/components/schemas/CategoryInput"
+    ProductBody:
+      type: object
+      required: [product]
+      properties:
+        product:
+          $ref: "#/components/schemas/ProductInput"
+    ServiceBody:
+      type: object
+      required: [service]
+      properties:
+        service:
+          $ref: "#/components/schemas/ServiceInput"
+    VariantBody:
+      type: object
+      required: [variant]
+      properties:
+        variant:
+          $ref: "#/components/schemas/VariantInput"
+    ReviewBody:
+      type: object
+      required: [review]
+      properties:
+        review:
+          $ref: "#/components/schemas/ReviewInput"
+    CartBody:
+      type: object
+      properties:
+        cart:
+          $ref: "#/components/schemas/CartInput"
+    CartItemBody:
+      type: object
+      required: [cart_item]
+      properties:
+        cart_item:
+          $ref: "#/components/schemas/CartItemInput"
+    CartItemUpdateBody:
+      type: object
+      required: [cart_item]
+      properties:
+        cart_item:
+          $ref: "#/components/schemas/CartItemUpdateInput"
+    OrderBody:
+      type: object
+      required: [order]
+      properties:
+        order:
+          $ref: "#/components/schemas/OrderInput"
+    CheckoutBody:
+      type: object
+      required: [order]
+      properties:
+        order:
+          $ref: "#/components/schemas/CheckoutInput"
+    OrderStatusBody:
+      type: object
+      required: [order]
+      properties:
+        order:
+          $ref: "#/components/schemas/OrderStatusInput"
