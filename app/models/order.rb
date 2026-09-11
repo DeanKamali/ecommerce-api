@@ -26,7 +26,10 @@ class Order < ApplicationRecord
 
   before_validation :set_defaults, on: :create
 
-  # Create an order from explicit line items: [[catalog_item, variant, quantity], ...]
+  # Create an order from explicit line items:
+  # [[catalog_item, variant, quantity, unit_price_cents], ...]
+  # `attributes` may include :discount_cents (and :coupon_code) to snapshot a
+  # coupon applied at checkout; total = subtotal - discount.
   def self.create_with_items!(items, attributes = {})
     if items.blank?
       order = new(attributes)
@@ -36,19 +39,20 @@ class Order < ApplicationRecord
 
     transaction do
       order = new(attributes)
-      items.each do |catalog_item, variant, quantity|
+      items.each do |catalog_item, variant, quantity, unit_price_cents|
         ensure_sellable!(catalog_item, variant, quantity)
         order.order_items.build(
           catalog_item: catalog_item,
           variant: variant,
           name: catalog_item.name,
           variant_name: variant&.name,
-          unit_price_cents: variant ? variant.price_cents : catalog_item.price_cents,
+          unit_price_cents: unit_price_cents,
           quantity: quantity
         )
       end
       order.subtotal_cents = order.order_items.sum { |oi| oi.unit_price_cents * oi.quantity }
-      order.total_cents = order.subtotal_cents
+      order.discount_cents = [order.discount_cents.to_i, order.subtotal_cents].min
+      order.total_cents = order.subtotal_cents - order.discount_cents
       order.save!
       decrement_stock!(items)
       order

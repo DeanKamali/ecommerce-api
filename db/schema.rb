@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_09_10_210002) do
+ActiveRecord::Schema[8.1].define(version: 2026_09_10_230000) do
   create_table "cart_items", force: :cascade do |t|
     t.integer "cart_id", null: false
     t.integer "catalog_item_id", null: false
@@ -26,11 +26,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_210002) do
   end
 
   create_table "carts", force: :cascade do |t|
+    t.integer "applied_coupon_id"
     t.datetime "created_at", null: false
     t.string "currency", limit: 3, default: "USD", null: false
     t.string "token", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id"
+    t.index ["applied_coupon_id"], name: "index_carts_on_applied_coupon_id"
     t.index ["token"], name: "index_carts_on_token", unique: true
     t.index ["user_id"], name: "index_carts_on_user_id"
   end
@@ -44,9 +46,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_210002) do
     t.text "description"
     t.integer "duration_minutes"
     t.boolean "featured", default: false, null: false
+    t.integer "markdown_step_days"
+    t.integer "markdown_step_percent", default: 0
     t.integer "max_capacity"
+    t.integer "max_discount_percent", default: 0
     t.string "name", null: false
     t.integer "price_cents", default: 0, null: false
+    t.datetime "sale_ends_at"
+    t.integer "sale_price_cents"
+    t.datetime "sale_starts_at"
     t.string "sku"
     t.string "slug", null: false
     t.integer "stock_quantity", default: 0
@@ -69,6 +77,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_210002) do
     t.index ["slug"], name: "index_categories_on_slug", unique: true
   end
 
+  create_table "coupons", force: :cascade do |t|
+    t.boolean "active", default: true, null: false
+    t.string "code", null: false
+    t.datetime "created_at", null: false
+    t.string "kind", default: "percent", null: false
+    t.integer "max_redemptions"
+    t.integer "min_subtotal_cents", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.integer "used_count", default: 0, null: false
+    t.datetime "valid_from"
+    t.datetime "valid_until"
+    t.integer "value", null: false
+    t.index ["code"], name: "index_coupons_on_code", unique: true
+  end
+
   create_table "order_items", force: :cascade do |t|
     t.integer "catalog_item_id", null: false
     t.datetime "created_at", null: false
@@ -87,9 +110,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_210002) do
 
   create_table "orders", force: :cascade do |t|
     t.integer "cart_id"
+    t.string "coupon_code"
     t.datetime "created_at", null: false
     t.string "currency", limit: 3, default: "USD", null: false
     t.string "customer_name"
+    t.integer "discount_cents", default: 0, null: false
     t.string "email"
     t.text "notes"
     t.string "number", null: false
@@ -105,6 +130,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_210002) do
     t.index ["number"], name: "index_orders_on_number", unique: true
     t.index ["status"], name: "index_orders_on_status"
     t.index ["user_id"], name: "index_orders_on_user_id"
+  end
+
+  create_table "reports", force: :cascade do |t|
+    t.integer "average_order_value_cents", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.bigint "discount_cents", default: 0, null: false
+    t.integer "new_customers", default: 0, null: false
+    t.integer "order_count", default: 0, null: false
+    t.string "period", null: false
+    t.datetime "period_end", null: false
+    t.datetime "period_start", null: false
+    t.bigint "revenue_cents", default: 0, null: false
+    t.json "top_items", default: [], null: false
+    t.datetime "updated_at", null: false
+    t.index ["period", "created_at"], name: "index_reports_on_period_and_created_at"
+    t.index ["period", "period_start"], name: "index_reports_on_period_and_period_start", unique: true
   end
 
   create_table "reviews", force: :cascade do |t|
@@ -148,6 +189,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_09_10_210002) do
   add_foreign_key "cart_items", "carts"
   add_foreign_key "cart_items", "catalog_items"
   add_foreign_key "cart_items", "variants"
+  add_foreign_key "carts", "coupons", column: "applied_coupon_id"
   add_foreign_key "carts", "users"
   add_foreign_key "catalog_items", "categories"
   add_foreign_key "categories", "categories", column: "parent_id"

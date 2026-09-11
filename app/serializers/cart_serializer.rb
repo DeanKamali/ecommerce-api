@@ -7,7 +7,12 @@ module CartSerializer
       currency: cart.currency,
       items: cart.cart_items.map { |ci| item(ci) },
       subtotal_cents: cart.subtotal_cents,
+      discount_cents: cart.discount_cents,
       total_cents: cart.total_cents,
+      applied_coupon: cart.applied_coupon && {
+        code: cart.applied_coupon.code,
+        discount_cents: cart.discount_cents
+      },
       updated_at: cart.updated_at
     }
   end

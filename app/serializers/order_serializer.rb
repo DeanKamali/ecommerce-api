@@ -7,6 +7,8 @@ module OrderSerializer
       status: order.status,
       currency: order.currency,
       subtotal_cents: order.subtotal_cents,
+      discount_cents: order.discount_cents,
+      coupon_code: order.coupon_code,
       total_cents: order.total_cents,
       customer: {
         name: order.customer_name,
@@ -31,6 +33,8 @@ module OrderSerializer
       number: order.number,
       status: order.status,
       currency: order.currency,
+      subtotal_cents: order.subtotal_cents,
+      discount_cents: order.discount_cents,
       total_cents: order.total_cents,
       customer_name: order.customer_name,
       items_count: order.order_items.count,

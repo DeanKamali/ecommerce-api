@@ -4,7 +4,8 @@ class ApplicationController < ActionController::API
   rescue_from ActiveRecord::RecordNotFound, with: :render_not_found
   rescue_from ActiveRecord::RecordInvalid, with: :render_validation_error
   rescue_from ActionController::ParameterMissing, with: :render_param_error
- rescue_from Order::InsufficientStock, with: :render_stock_error
+  rescue_from Order::InsufficientStock, with: :render_stock_error
+  rescue_from Coupon::NotApplicable, with: :render_coupon_error
  rescue_from ActionController::RoutingError, with: :render_not_found
 
   private
@@ -31,6 +32,11 @@ class ApplicationController < ActionController::API
 
   def render_stock_error(error)
     render json: { error: "insufficient_stock", message: error.message },
+      status: :unprocessable_entity
+  end
+
+  def render_coupon_error(error)
+    render json: { error: "coupon_not_applicable", message: error.message },
       status: :unprocessable_entity
   end
 end

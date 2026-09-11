@@ -8,6 +8,19 @@ module CatalogItemSerializer
       description: item.description,
       category: item.category && CategorySerializer.serialize(item.category),
       price: { cents: item.price_cents, currency: item.currency },
+      current_price_cents: item.current_price_cents,
+      sale: {
+        on_sale: item.on_sale?,
+        price_cents: item.sale_price_cents,
+        starts_at: item.sale_starts_at,
+        ends_at: item.sale_ends_at
+      },
+      markdown: {
+        step_days: item.markdown_step_days,
+        step_percent: item.markdown_step_percent,
+        max_discount_percent: item.max_discount_percent,
+        current_discount_percent: item.markdown_discount_percent
+      },
       active: item.active,
       featured: item.featured,
       in_stock: item.in_stock?,

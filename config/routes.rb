@@ -1,7 +1,7 @@
 Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
   root to: proc {
-    body = { name: "E-commerce API", endpoints: %w[/auth/register /auth/login /auth/me /products /services /categories /carts /orders] }.to_json
+    body = { name: "E-commerce API", endpoints: %w[/auth/register /auth/login /auth/me /products /services /categories /carts /orders /coupons /admin/overview /admin/reports /admin/top_items] }.to_json
     [200, { "Content-Type" => "application/json" }, [body]]
   }
 
@@ -20,14 +20,28 @@ Rails.application.routes.draw do
     resources :cart_items, only: %i[index show create update destroy]
     member do
       post :checkout
+      post :coupon
+      delete :coupon
     end
   end
+
+  # Coupon management (admin) — apply/remove happens on the cart.
+  resources :coupons, only: %i[index show create update destroy]
 
   resources :orders do
     resources :order_items, only: %i[index]
     member do
       post :cancel
     end
+  end
+
+  # Admin dashboard / KPI endpoints
+  namespace :admin do
+    get "overview", to: "dashboard#overview"
+    get "reports", to: "dashboard#reports"
+    get "reports/:id", to: "dashboard#report"
+    get "top_items", to: "dashboard#top_items"
+    post "reports/generate", to: "dashboard#generate"
   end
 
 

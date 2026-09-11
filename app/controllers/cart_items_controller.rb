@@ -35,7 +35,7 @@ class CartItemsController < ApplicationController
         catalog_item: catalog_item,
         variant: variant,
         quantity: quantity,
-        unit_price_cents: variant ? variant.price_cents : catalog_item.price_cents,
+        unit_price_cents: catalog_item.current_price_cents(variant),
         position: @cart.cart_items.count
       )
     end
@@ -49,7 +49,7 @@ class CartItemsController < ApplicationController
       variant = Variant.find(attrs[:variant_id])
       raise ActiveRecord::RecordNotFound, "variant does not belong to this catalog item" if variant.catalog_item_id != @item.catalog_item_id
 
-      attrs = attrs.merge(unit_price_cents: variant.price_cents)
+      attrs = attrs.merge(unit_price_cents: @item.catalog_item.current_price_cents(variant))
     end
     @item.update!(attrs)
     render json: CartSerializer.item(@item)

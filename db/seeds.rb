@@ -93,6 +93,34 @@ seo = Service.create!(
   bookable: true
 )
 
+# --- Pricing demo: one item on a sale, one on a markdown path -------------
+
+# Headphones: 20% sale, active now, ends in 3 weeks.
+headphones.update!(
+  sale_price_cents: 159_99,
+  sale_starts_at: 7.days.ago,
+  sale_ends_at: 21.days.from_now
+)
+
+# Grinder: 15% off per 30 days unsold, capped at 60%. Backdated 95 days
+# so the demo shows a 30% markdown already applied.
+grinder.update!(markdown_step_days: 30, markdown_step_percent: 15, max_discount_percent: 60)
+grinder.update_column(:created_at, 95.days.ago)
+
+# --- Coupons ----------------------------------------------------------------
+
+if Coupon.count.zero?
+  Coupon.create!(code: "SAVE10", kind: "percent", value: 10)
+  Coupon.create!(code: "WELCOME20", kind: "percent", value: 20,
+                 min_subtotal_cents: 5_000, max_redemptions: 100,
+                 valid_from: 1.day.ago, valid_until: 30.days.from_now)
+  Coupon.create!(code: "FLAT50", kind: "fixed", value: 5_000, min_subtotal_cents: 3_000)
+  # Expired: should be rejected with 422.
+  Coupon.create!(code: "SUMMER25", kind: "percent", value: 25,
+                 valid_from: 90.days.ago, valid_until: 30.days.ago)
+  # Redeemed out: should be rejected with 422.
+  Coupon.create!(code: "OLD15", kind: "percent", value: 15, max_redemptions: 5, used_count: 5)
+end
 [
   [headphones, "Ava", 5, "Battery life is incredible, ANC is the best I've used."],
   [headphones, "Marcus", 4, "Great sound. Slightly tight fit for large heads."],
@@ -104,4 +132,4 @@ seo = Service.create!(
   item.reviews.create!(author: author, rating: rating, body: body, user: demo)
 end
 
-puts "Seeded: #{User.count} users, #{Category.count} categories, #{Product.count} products, #{Service.count} services, #{Variant.count} variants, #{Review.count} reviews"
+puts "Seeded: #{User.count} users, #{Category.count} categories, #{Product.count} products, #{Service.count} services, #{Variant.count} variants, #{Review.count} reviews, #{Coupon.count} coupons"

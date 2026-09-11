@@ -64,6 +64,8 @@ class CatalogItems::BaseController < ApplicationController
   def item_params
     params.require(scoped_class.name.underscore.to_sym)
       .permit(:name, :slug, :description, :category_id, :price_cents, :currency, :active, :featured,
+        :sale_price_cents, :sale_starts_at, :sale_ends_at,
+        :markdown_step_days, :markdown_step_percent, :max_discount_percent,
         *self.class::EXTRA_PARAMS)
   end
 end

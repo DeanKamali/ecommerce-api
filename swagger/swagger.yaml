@@ -5,14 +5,15 @@ info:
   description: |
     REST API for a small e-commerce catalog: products (with variants) and
     services (with reviews), categories, carts with checkout, and orders
-    with a status lifecycle. All responses are JSON.
+    with a status lifecycle. Supports fixed sales, automatic markdowns,
+    and coupon discounts applied to carts and snapshotted onto orders.
 
     Monetary values are integers in minor units (cents) alongside an
     ISO-4217 currency code.
 
     Authentication: most write operations and cart, order, and review
     mutations require a bearer token from /auth/register or /auth/login.
-    Catalog reads are public.
+    Catalog reads and coupon lookups are public.
 servers:
   - url: /
     description: Same origin as this document
@@ -30,9 +31,14 @@ tags:
   - name: categories
   - name: carts
   - name: cart items
+  - name: coupons
+    description: Coupon codes for cart discounts
   - name: orders
+    description: Customer orders and order items
   - name: auth
     description: Registration, login, and account management
+  - name: dashboard
+    description: Admin KPI and reporting endpoints
 
 paths:
   /:
@@ -756,6 +762,51 @@ paths:
           description: Deleted
         "404":
           $ref: "#/components/responses/NotFound"
+  /carts/{id}/coupon:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [carts, coupons]
+      summary: Apply a coupon to a cart
+      description: |
+        Applies a coupon to the cart. Replaces any previously applied coupon.
+        Returns the updated cart with `discount_cents` and `applied_coupon`.
+      operationId: applyCouponToCart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CouponApplyBody"
+      responses:
+        "200":
+          description: Updated cart with the applied coupon
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Coupon is not applicable (inactive, outside its window, minimum subtotal not met, or redeemed out)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorCouponNotApplicable"
+    delete:
+      tags: [carts, coupons]
+      summary: Remove the applied coupon from a cart
+      operationId: removeCouponFromCart
+      responses:
+        "200":
+          description: Updated cart without the coupon
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /carts/{id}/checkout:
     parameters:
       - $ref: "#/components/parameters/Id"
@@ -895,6 +946,88 @@ paths:
       responses:
         "204":
           description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /coupons:
+    get:
+      tags: [coupons]
+      summary: List coupons (admin)
+      description: Returns coupons, most recently created first.
+      operationId: listCoupons
+      responses:
+        "200":
+          description: Coupons
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Coupon"
+    post:
+      tags: [coupons]
+      summary: Create a coupon (admin)
+      operationId: createCoupon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CouponBody"
+      responses:
+        "201":
+          description: Created a coupon
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Coupon"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /coupons/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [coupons]
+      summary: Get a coupon (admin)
+      operationId: getCoupon
+      responses:
+        "200":
+          description: Coupon detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Coupon"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [coupons]
+      summary: Update a coupon (admin)
+      operationId: updateCoupon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CouponBody"
+      responses:
+        "200":
+          description: Updated coupon
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Coupon"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [coupons]
+      summary: Delete a coupon (admin)
+      operationId: deleteCoupon
+      responses:
+        "204":
+          description: Deleted a coupon
         "404":
           $ref: "#/components/responses/NotFound"
   /orders:
@@ -1148,6 +1281,145 @@ paths:
           description: Account deleted
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /admin/overview:
+    get:
+      tags: [dashboard]
+      summary: KPI overview (admin)
+      description: |
+        Live KPI snapshot across the store: order counts by status, revenue,
+        average order value, catalog health, active coupons, and weekly/monthly
+        activity.
+      operationId: getOverview
+      responses:
+        "200":
+          description: KPI snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /admin/reports:
+    get:
+      tags: [dashboard]
+      summary: List report snapshots (admin)
+      description: Precomputed weekly/monthly report snapshots, most recently created first.
+      operationId: listReports
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Per"
+        - name: period
+          in: query
+          description: Filter by period
+          schema:
+            type: string
+            enum: [weekly, monthly]
+      responses:
+        "200":
+          description: Reports
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Report"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /admin/reports/generate:
+    post:
+      tags: [dashboard]
+      summary: Generate a report snapshot (admin)
+      description: Synchronously (re)generates the report snapshot for the given period and returns it.
+      operationId: generateReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [period]
+              properties:
+                period:
+                  type: string
+                  enum: [weekly, monthly]
+      responses:
+        "201":
+          description: Generated report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /admin/reports/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [dashboard]
+      summary: Get a report snapshot (admin)
+      operationId: getReport
+      responses:
+        "200":
+          description: Report detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Report"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /admin/top_items:
+    get:
+      tags: [dashboard]
+      summary: Top items by revenue (admin)
+      description: Catalog items ranked by lifetime revenue from non-cancelled orders.
+      operationId: listTopItems
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of items (1-50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        "200":
+          description: Top items
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, limit]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TopItem"
+                  limit:
+                    type: integer
+                    example: 10
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 components:
   securitySchemes:
     bearerAuth:
@@ -1207,6 +1479,20 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorUnauthorized"
+    Forbidden:
+      description: The caller is authenticated but lacks admin privileges
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error, message]
+            properties:
+              error:
+                type: string
+                example: forbidden
+              message:
+                type: string
+                example: admin privileges required
   schemas:
     User:
       type: object
@@ -1290,7 +1576,7 @@ components:
           type: array
           items:
             type: string
-          example: ["/products", "/services", "/categories", "/carts", "/orders"]
+          example: ["/products", "/services", "/categories", "/carts", "/orders", "/coupons"]
     ErrorNotFound:
       type: object
       required: [error, message]
@@ -1325,6 +1611,16 @@ components:
           items:
             type: string
           example: ["Name can't be blank", "Slug can't be blank"]
+    ErrorCouponNotApplicable:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: coupon_not_applicable
+        message:
+          type: string
+          example: "cart subtotal must be at least 10000 cents for SAVE10"
     ErrorInvalidTransition:
       type: object
       required: [error, errors]
@@ -1441,7 +1737,7 @@ components:
                 $ref: "#/components/schemas/CatalogItem"
     CatalogItemBase:
       type: object
-      required: [id, type, name, slug, price, active, featured, in_stock, rating, created_at]
+      required: [id, type, name, slug, price, current_price_cents, sale, markdown, active, featured, in_stock, rating, created_at]
       properties:
         id:
           type: integer
@@ -1461,6 +1757,43 @@ components:
             - $ref: "#/components/schemas/Category"
         price:
           $ref: "#/components/schemas/Price"
+        current_price_cents:
+          type: integer
+          description: Effective unit price in minor units after sale and markdown discounts
+        sale:
+          type: object
+          required: [on_sale, price_cents, starts_at, ends_at]
+          properties:
+            on_sale:
+              type: boolean
+            price_cents:
+              type: integer
+              nullable: true
+            starts_at:
+              type: string
+              format: date-time
+              nullable: true
+            ends_at:
+              type: string
+              format: date-time
+              nullable: true
+        markdown:
+          type: object
+          required: [step_days, step_percent, max_discount_percent, current_discount_percent]
+          properties:
+            step_days:
+              type: integer
+              nullable: true
+              description: Days between automatic markdown steps
+            step_percent:
+              type: number
+              nullable: true
+            max_discount_percent:
+              type: number
+              nullable: true
+            current_discount_percent:
+              type: number
+              example: 15.0
         active:
           type: boolean
         featured:
@@ -1583,7 +1916,7 @@ components:
           example: 2468
     Cart:
       type: object
-      required: [id, token, currency, items, subtotal_cents, total_cents, updated_at]
+      required: [id, token, currency, items, subtotal_cents, discount_cents, total_cents, updated_at]
       properties:
         id:
           type: integer
@@ -1599,8 +1932,21 @@ components:
             $ref: "#/components/schemas/CartItem"
         subtotal_cents:
           type: integer
+        discount_cents:
+          type: integer
+          description: Discount taken off the subtotal by the applied coupon
         total_cents:
           type: integer
+        applied_coupon:
+          nullable: true
+          type: object
+          required: [code, discount_cents]
+          properties:
+            code:
+              type: string
+              example: SAVE10
+            discount_cents:
+              type: integer
         updated_at:
           type: string
           format: date-time
@@ -1657,6 +2003,8 @@ components:
       properties:
         id:
           type: integer
+        user_id:
+          type: integer
         number:
           type: string
           example: "2026-000001"
@@ -1667,6 +2015,13 @@ components:
           example: USD
         subtotal_cents:
           type: integer
+        discount_cents:
+          type: integer
+          description: Discount taken off the subtotal by the applied coupon
+        coupon_code:
+          type: string
+          nullable: true
+          example: SAVE10
         total_cents:
           type: integer
         customer:
@@ -1706,9 +2061,11 @@ components:
           format: date-time
     OrderSummary:
       type: object
-      required: [id, number, status, currency, total_cents, created_at]
+      required: [id, user_id, number, status, currency, subtotal_cents, discount_cents, total_cents, created_at]
       properties:
         id:
+          type: integer
+        user_id:
           type: integer
         number:
           type: string
@@ -1717,6 +2074,10 @@ components:
         currency:
           type: string
           example: USD
+        subtotal_cents:
+          type: integer
+        discount_cents:
+          type: integer
         total_cents:
           type: integer
         customer_name:
@@ -1728,6 +2089,99 @@ components:
         created_at:
           type: string
           format: date-time
+    Coupon:
+      type: object
+      required: [id, code, kind, value, min_subtotal_cents, max_redemptions, used_count, active, redeemable, created_at]
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+          example: SAVE10
+        kind:
+          type: string
+          enum: [percent, fixed]
+          description: percent = percentage off the subtotal; fixed = fixed amount off, in minor units
+        value:
+          type: number
+          description: Between 1 and 100 for kind=percent; positive cents for kind=fixed
+          example: 10
+        min_subtotal_cents:
+          type: integer
+          minimum: 0
+          example: 5000
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+        max_redemptions:
+          type: integer
+          nullable: true
+          minimum: 1
+          example: 100
+        used_count:
+          type: integer
+          example: 5
+        active:
+          type: boolean
+        redeemable:
+          type: boolean
+          description: "true when the coupon can be applied right now (active, in window, not redeemed out)"
+        created_at:
+          type: string
+          format: date-time
+    CouponInput:
+      type: object
+      required: [code, kind, value]
+      properties:
+        code:
+          type: string
+          example: SAVE10
+          description: Uppercase letters, digits, underscore, dash; starts with a letter or digit
+        kind:
+          type: string
+          enum: [percent, fixed]
+        value:
+          type: number
+        min_subtotal_cents:
+          type: integer
+          minimum: 0
+          nullable: true
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+        max_redemptions:
+          type: integer
+          nullable: true
+          minimum: 1
+        active:
+          type: boolean
+    CouponBody:
+      type: object
+      required: [coupon]
+      properties:
+        coupon:
+          $ref: "#/components/schemas/CouponInput"
+    CouponApplyBody:
+      type: object
+      required: [coupon]
+      properties:
+        coupon:
+          type: object
+          required: [code]
+          properties:
+            code:
+              type: string
+              example: SAVE10
     CategoryInput:
       type: object
       required: [name]
@@ -1781,6 +2235,35 @@ components:
           nullable: true
         track_inventory:
           type: boolean
+        sale_price_cents:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: Discounted price in minor units while a sale window is active
+        sale_starts_at:
+          type: string
+          format: date-time
+          nullable: true
+        sale_ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        markdown_step_days:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: Days between automatic markdown steps
+        markdown_step_percent:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 100
+        max_discount_percent:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: Cap on the cumulative markdown discount
     ServiceInput:
       type: object
       required: [name, price_cents]
@@ -1816,6 +2299,35 @@ components:
         max_capacity:
           type: integer
           nullable: true
+        sale_price_cents:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: Discounted price in minor units while a sale window is active
+        sale_starts_at:
+          type: string
+          format: date-time
+          nullable: true
+        sale_ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        markdown_step_days:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: Days between automatic markdown steps
+        markdown_step_percent:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 100
+        max_discount_percent:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: Cap on the cumulative markdown discount
     VariantInput:
       type: object
       required: [name, sku, price_cents]
@@ -2006,3 +2518,158 @@ components:
       properties:
         order:
           $ref: "#/components/schemas/OrderStatusInput"
+    Report:
+      type: object
+      required: [id, period, order_count, revenue_cents, created_at]
+      properties:
+        id:
+          type: integer
+          example: 1
+        period:
+          type: string
+          enum: [weekly, monthly]
+          example: weekly
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        order_count:
+          type: integer
+          example: 120
+        revenue_cents:
+          type: integer
+          example: 15432000
+        average_order_value_cents:
+          type: integer
+          example: 128600
+        discount_cents:
+          type: integer
+          example: 210000
+        new_customers:
+          type: integer
+          example: 45
+        top_items:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              type:
+                type: string
+              quantity:
+                type: integer
+              revenue_cents:
+                type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    TopItem:
+      type: object
+      required: [id, name, type, quantity, revenue_cents]
+      properties:
+        id:
+          type: integer
+          example: 7
+        name:
+          type: string
+          example: Burr Coffee Grinder
+        type:
+          type: string
+          enum: [product, service]
+          example: product
+        quantity:
+          type: integer
+          example: 320
+        revenue_cents:
+          type: integer
+          example: 2864000
+    PeriodStats:
+      type: object
+      required: [orders, revenue_cents]
+      properties:
+        orders:
+          type: integer
+          example: 12
+        revenue_cents:
+          type: integer
+          example: 1543200
+    DashboardOverview:
+      type: object
+      required: [currency, orders, revenue_cents, average_order_value_cents, customers, catalog, coupons, periods]
+      properties:
+        currency:
+          type: string
+          example: USD
+        orders:
+          type: object
+          required: [total, active, by_status]
+          properties:
+            total:
+              type: integer
+              example: 2
+            active:
+              type: integer
+              example: 1
+            by_status:
+              type: object
+              additionalProperties:
+                type: integer
+              example: { pending: 1, cancelled: 1 }
+        revenue_cents:
+          type: integer
+          example: 15432000
+        average_order_value_cents:
+          type: integer
+          example: 128600
+        discounts_cents:
+          type: integer
+          example: 210000
+        customers:
+          type: integer
+          example: 45
+        catalog:
+          type: object
+          required: [total, products, services, low_stock]
+          properties:
+            total:
+              type: integer
+              example: 9
+            products:
+              type: integer
+              example: 5
+            services:
+              type: integer
+              example: 4
+            low_stock:
+              type: integer
+              example: 1
+        coupons:
+          type: object
+          required: [total, active]
+          properties:
+            total:
+              type: integer
+              example: 3
+            active:
+              type: integer
+              example: 2
+        periods:
+          type: object
+          required: [this_week, this_month]
+          properties:
+            this_week:
+              $ref: "#/components/schemas/PeriodStats"
+            this_month:
+              $ref: "#/components/schemas/PeriodStats"
+        last_order_at:
+          type: string
+          format: date-time
+          nullable: true
