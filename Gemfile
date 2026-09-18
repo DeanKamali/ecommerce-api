@@ -4,7 +4,7 @@ source "https://rubygems.org"
 gem "rails", "~> 8.1.3", ">= 8.1.3.1"
 # Use sqlite3 as the database for Active Record
 # Pin json 2.x: json 3.x removed the positional options arg ActiveSupport 8.1 passes to JSON.parse
-gem "json", "= 2.18.0"
+gem "json", "3.0.2"
 gem "sqlite3", ">= 2.1"
 # Use the Puma web server [https://github.com/puma/puma]
 gem "puma", ">= 5.0"
