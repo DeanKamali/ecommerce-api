@@ -1,7 +1,7 @@
 source "https://rubygems.org"
 
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
-gem "rails", "~> 8.1.3", ">= 8.1.3.1"
+gem "rails", "~> 8.1.4"
 # Use sqlite3 as the database for Active Record
 # Pin json 2.x: json 3.x removed the positional options arg ActiveSupport 8.1 passes to JSON.parse
 gem "json", "= 2.18.0"
